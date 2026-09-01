@@ -11,13 +11,19 @@ class Variable:
     name: str
     alias: str | None = None
     label: str | None = None
+    type_name: str | None = None
 
     @property
     def ambiguous_name_alias(self) -> bool:
         return self.alias is not None and self.alias == self.name
 
     def to_dict(self) -> dict[str, object]:
-        return {"name": self.name, "alias": self.alias, "label": self.label}
+        return {
+            "name": self.name,
+            "alias": self.alias,
+            "label": self.label,
+            "type_name": self.type_name,
+        }
 
 
 @dataclass
@@ -81,11 +87,14 @@ class DatabaseSchema:
                     raise SchemaError("every variable payload must contain a string name")
                 alias = variable.get("alias")
                 label = variable.get("label")
+                type_name = variable.get("type_name")
                 if alias is not None and not isinstance(alias, str):
                     raise SchemaError("variable alias must be string or null")
                 if label is not None and not isinstance(label, str):
                     raise SchemaError("variable label must be string or null")
-                variables.append(Variable(variable["name"], alias, label))
+                if type_name is not None and not isinstance(type_name, str):
+                    raise SchemaError("variable type_name must be string or null")
+                variables.append(Variable(variable["name"], alias, label, type_name))
             alias = raw.get("alias")
             parent = raw.get("parent")
             if alias is not None and not isinstance(alias, str):
@@ -105,6 +114,40 @@ class DatabaseSchema:
 
     def to_dict(self) -> dict[str, object]:
         return {"entities": [entity.to_dict() for entity in self.entities.values()]}
+
+    def with_parent_map(self, parent_map: Mapping[str, str | None]) -> "DatabaseSchema":
+        """Apply a validated external hierarchy without mutating this schema.
+
+        Existing non-null runtime parents are treated as evidence and must agree with
+        the supplied map. This permits flat metadata APIs to be augmented by an adapter
+        profile without ever silently overriding contradictory runtime information.
+        """
+        unknown = set(parent_map) - set(self.entities)
+        if unknown:
+            raise SchemaError(
+                "parent map references unknown entities: " + ", ".join(sorted(unknown))
+            )
+        cloned: list[Entity] = []
+        for entity in self.entities.values():
+            requested = parent_map.get(entity.name, entity.parent)
+            if entity.parent is not None and entity.name in parent_map and requested != entity.parent:
+                raise SchemaError(
+                    f"parent map conflicts for {entity.name}: runtime={entity.parent!r} profile={requested!r}"
+                )
+            if requested is not None and requested not in self.entities:
+                raise SchemaError(
+                    f"parent map for {entity.name} references missing entity {requested}"
+                )
+            cloned.append(
+                Entity(
+                    name=entity.name,
+                    alias=entity.alias,
+                    parent=requested,
+                    selectable=entity.selectable,
+                    variables=entity.variables,
+                )
+            )
+        return DatabaseSchema.from_entities(cloned)
 
     def _assert_acyclic(self) -> None:
         for name in self.entities:
