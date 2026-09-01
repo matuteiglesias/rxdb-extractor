@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
@@ -23,6 +23,7 @@ class EntityJob:
     entity: str
     own_id: str
     variables: tuple[str, ...] = ()
+    prelude_definitions: tuple[tuple[str, str, str], ...] = ()
     parent_inheritance: tuple[tuple[str, str], ...] = ()
     geography_entities: tuple[str, ...] = ()
     blocked_variables: frozenset[str] = frozenset()
@@ -108,6 +109,7 @@ def run_slice(
             selection_code=spec.selection_code,
             identity_scope=spec.identity_scope,
             own_id=job.own_id,
+            prelude_definitions=job.prelude_definitions,
             parent_inheritance=job.parent_inheritance,
             geography_entities=job.geography_entities,
             variables=job.variables,
