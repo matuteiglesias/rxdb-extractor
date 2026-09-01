@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from typing import Mapping
 
 from .errors import SchemaError
 
@@ -13,6 +16,9 @@ class Variable:
     def ambiguous_name_alias(self) -> bool:
         return self.alias is not None and self.alias == self.name
 
+    def to_dict(self) -> dict[str, object]:
+        return {"name": self.name, "alias": self.alias, "label": self.label}
+
 
 @dataclass
 class Entity:
@@ -22,6 +28,15 @@ class Entity:
     selectable: bool = False
     variables: tuple[Variable, ...] = ()
     children: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "alias": self.alias,
+            "parent": self.parent,
+            "selectable": self.selectable,
+            "variables": [variable.to_dict() for variable in self.variables],
+        }
 
 
 @dataclass
@@ -48,6 +63,49 @@ class DatabaseSchema:
         schema._assert_acyclic()
         return schema
 
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, object]) -> "DatabaseSchema":
+        raw_entities = payload.get("entities")
+        if not isinstance(raw_entities, list):
+            raise SchemaError("schema payload must contain an entities list")
+        entities: list[Entity] = []
+        for raw in raw_entities:
+            if not isinstance(raw, dict) or not isinstance(raw.get("name"), str):
+                raise SchemaError("every entity payload must contain a string name")
+            raw_variables = raw.get("variables", [])
+            if not isinstance(raw_variables, list):
+                raise SchemaError(f"entity {raw['name']} variables must be a list")
+            variables: list[Variable] = []
+            for variable in raw_variables:
+                if not isinstance(variable, dict) or not isinstance(variable.get("name"), str):
+                    raise SchemaError("every variable payload must contain a string name")
+                alias = variable.get("alias")
+                label = variable.get("label")
+                if alias is not None and not isinstance(alias, str):
+                    raise SchemaError("variable alias must be string or null")
+                if label is not None and not isinstance(label, str):
+                    raise SchemaError("variable label must be string or null")
+                variables.append(Variable(variable["name"], alias, label))
+            alias = raw.get("alias")
+            parent = raw.get("parent")
+            if alias is not None and not isinstance(alias, str):
+                raise SchemaError("entity alias must be string or null")
+            if parent is not None and not isinstance(parent, str):
+                raise SchemaError("entity parent must be string or null")
+            entities.append(
+                Entity(
+                    name=raw["name"],
+                    alias=alias,
+                    parent=parent,
+                    selectable=bool(raw.get("selectable", False)),
+                    variables=tuple(variables),
+                )
+            )
+        return cls.from_entities(entities)
+
+    def to_dict(self) -> dict[str, object]:
+        return {"entities": [entity.to_dict() for entity in self.entities.values()]}
+
     def _assert_acyclic(self) -> None:
         for name in self.entities:
             seen: set[str] = set()
@@ -68,6 +126,32 @@ class DatabaseSchema:
             cur = self.entities[cur].parent
         result.reverse()
         return result
+
+    def descendants(self, entity_name: str) -> list[Entity]:
+        if entity_name not in self.entities:
+            raise SchemaError(f"unknown entity: {entity_name}")
+        result: list[Entity] = []
+        stack = list(reversed(self.entities[entity_name].children))
+        while stack:
+            name = stack.pop()
+            entity = self.entities[name]
+            result.append(entity)
+            stack.extend(reversed(entity.children))
+        return result
+
+    def path(self, ancestor_name: str, descendant_name: str) -> list[Entity]:
+        if ancestor_name not in self.entities or descendant_name not in self.entities:
+            raise SchemaError("path endpoints must be known entities")
+        chain = [self.entities[descendant_name]]
+        cur = self.entities[descendant_name].parent
+        while cur is not None and cur != ancestor_name:
+            chain.append(self.entities[cur])
+            cur = self.entities[cur].parent
+        if cur != ancestor_name:
+            raise SchemaError(f"{ancestor_name} is not an ancestor of {descendant_name}")
+        chain.append(self.entities[ancestor_name])
+        chain.reverse()
+        return chain
 
     def nearest_selectable_ancestor(self, entity_name: str) -> Entity:
         ancestors = self.ancestors(entity_name)
