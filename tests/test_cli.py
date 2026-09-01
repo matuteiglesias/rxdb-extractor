@@ -37,7 +37,14 @@ req = json.load(sys.stdin)
 if req["action"] == "capabilities":
     result = {"redengine_version":"1.3.0-final","selection":True,"number":True,"inherited_define":True,"freq":True,"cmpcode":True,"table_view":False}
 elif req["action"] == "inspect":
-    result = {"path": req["database"], "entities": ["RADIO", "PERSONA"]}
+    result = {
+        "entities": [
+            {"name":"RADIO","parent":None,"selectable":True,"variables":[]},
+            {"name":"PERSONA","parent":"RADIO","selectable":False,
+             "variables":[{"name":"P02","alias":"SEXO","label":"Sex"}]},
+        ],
+        "metadata": {"path": req["database"]},
+    }
 else:
     result = {}
 print(json.dumps({"protocol_version":"1","ok":True,"result":result}))
@@ -48,4 +55,5 @@ print(json.dumps({"protocol_version":"1","ok":True,"result":result}))
     assert main(["--bridge", command, "inspect", "demo.rxdb"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["capabilities"]["redengine_version"] == "1.3.0-final"
-    assert payload["database"]["path"] == "demo.rxdb"
+    assert payload["database"]["metadata"]["path"] == "demo.rxdb"
+    assert payload["database"]["entities"][1]["parent"] == "RADIO"
