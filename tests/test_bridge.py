@@ -1,4 +1,3 @@
-import json
 import sys
 
 import pytest
@@ -25,7 +24,14 @@ if action == "capabilities":
         "table_view": False,
     }
 elif action == "inspect":
-    result = {"database": req["database"], "entities": ["RADIO", "PERSONA"]}
+    result = {
+        "entities": [
+            {"name":"RADIO","alias":None,"parent":None,"selectable":True,"variables":[]},
+            {"name":"PERSONA","alias":None,"parent":"RADIO","selectable":False,
+             "variables":[{"name":"P02","alias":"SEXO","label":"Sex"}]},
+        ],
+        "metadata": {"database": req["database"]},
+    }
 elif action == "execute_record_plan":
     plan = req["plan"]
     rows = []
@@ -66,7 +72,10 @@ def test_json_subprocess_runtime_capabilities_inspect_and_records(tmp_path):
     assert capabilities.redengine_version == "1.3.0-final"
     assert capabilities.cmpcode
     assert not capabilities.table_view
-    assert runtime.inspect("demo.rxdb")["database"] == "demo.rxdb"
+    inspection = runtime.inspect("demo.rxdb")
+    assert inspection.metadata["database"] == "demo.rxdb"
+    assert inspection.schema.entities["PERSONA"].parent == "RADIO"
+    assert inspection.schema.entities["PERSONA"].variables[0].alias == "SEXO"
 
     plan = build_record_query(
         entity="PERSONA",
