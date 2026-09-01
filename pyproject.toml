@@ -9,7 +9,7 @@ description = "Provenance-first relational extraction from RedatamX/RXDB databas
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Matias Iglesias"}]
-dependencies = []
+dependencies = ["pyarrow>=17"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
