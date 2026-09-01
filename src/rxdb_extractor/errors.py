@@ -6,6 +6,10 @@ class CapabilityError(RxdbError):
     """Raised when the runtime lacks a launch-critical capability."""
 
 
+class RuntimeBridgeError(RxdbError):
+    """Raised when an external RedEngine bridge violates the runtime protocol."""
+
+
 class SchemaError(RxdbError):
     """Raised when the database entity graph is inconsistent or unsupported."""
 
