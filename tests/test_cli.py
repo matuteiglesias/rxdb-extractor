@@ -1,4 +1,5 @@
 import json
+import sys
 
 from rxdb_extractor.cli import main
 from rxdb_extractor.reports import build_validation_report, write_validation_report
@@ -26,3 +27,25 @@ def test_live_commands_fail_explicitly_until_runtime_is_configured(capsys):
     assert main(["inspect", "example.rxdb"]) == 2
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "runtime-not-configured"
+
+
+def test_inspect_cli_uses_json_bridge(tmp_path, capsys):
+    bridge = tmp_path / "bridge.py"
+    bridge.write_text(
+        r'''import json, sys
+req = json.load(sys.stdin)
+if req["action"] == "capabilities":
+    result = {"redengine_version":"1.3.0-final","selection":True,"number":True,"inherited_define":True,"freq":True,"cmpcode":True,"table_view":False}
+elif req["action"] == "inspect":
+    result = {"path": req["database"], "entities": ["RADIO", "PERSONA"]}
+else:
+    result = {}
+print(json.dumps({"protocol_version":"1","ok":True,"result":result}))
+''',
+        encoding="utf-8",
+    )
+    command = f'{sys.executable} "{bridge}"'
+    assert main(["--bridge", command, "inspect", "demo.rxdb"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["capabilities"]["redengine_version"] == "1.3.0-final"
+    assert payload["database"]["path"] == "demo.rxdb"
