@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "inspect" and runtime is not None:
         payload = {
             "capabilities": runtime.capabilities().to_dict(),
-            "database": runtime.inspect(args.database),
+            "database": runtime.inspect(args.database).to_dict(),
         }
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
