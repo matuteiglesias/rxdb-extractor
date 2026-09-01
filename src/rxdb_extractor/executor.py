@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +46,7 @@ def extract_entity_batches(
     selection_code: str,
     identity_scope: str,
     own_id: str,
+    prelude_definitions: tuple[tuple[str, str, str], ...] = (),
     parent_inheritance: tuple[tuple[str, str], ...] = (),
     geography_entities: tuple[str, ...] = (),
     variables: tuple[str, ...] = (),
@@ -65,6 +66,7 @@ def extract_entity_batches(
             selection_code=selection_code,
             identity_scope=identity_scope,
             own_id=own_id,
+            prelude_definitions=prelude_definitions,
             parent_inheritance=parent_inheritance,
             geography_entities=geography_entities,
             variables=batch.variables,
