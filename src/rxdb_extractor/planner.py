@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from .errors import PlanningError
 
@@ -22,11 +22,33 @@ class RecordQueryPlan:
     parent_ids: tuple[str, ...]
     geography_fields: tuple[str, ...]
     variables: tuple[str, ...]
+    variable_fields: tuple[str, ...]
     spc: str
+
+    @property
+    def dimension_fields(self) -> tuple[str, ...]:
+        return (
+            self.own_id,
+            *self.parent_ids,
+            *self.geography_fields,
+            *self.variable_fields,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        payload = asdict(self)
+        payload["dimension_fields"] = list(self.dimension_fields)
+        return payload
 
 
 def _qualified(entity: str, field: str) -> str:
     return f"{entity}.{field}"
+
+
+def _variable_output_field(expression: str) -> str:
+    field = expression.rsplit(".", 1)[-1]
+    if not field or "@" in field:
+        raise PlanningError(f"unsupported stored-variable expression: {expression!r}")
+    return field
 
 
 def build_record_query(
@@ -94,15 +116,20 @@ def build_record_query(
             )
             geography_fields.append(field)
 
+    variable_fields = tuple(_variable_output_field(variable) for variable in variables)
+    output_fields = (own_id, *parent_fields, *geography_fields, *variable_fields)
+    duplicates = {field for field in output_fields if output_fields.count(field) > 1}
+    if duplicates:
+        raise PlanningError(
+            "record output fields collide: " + ", ".join(sorted(duplicates))
+        )
+
     dimensions = [
         _qualified(entity, own_id),
         *(_qualified(entity, f) for f in parent_fields),
         *(_qualified(entity, f) for f in geography_fields),
         *variables,
     ]
-    if not dimensions:
-        raise PlanningError("at least one FREQ dimension is required")
-
     lines.append("FREQ " + " BY ".join(dimensions))
     spc = "\n".join(lines)
     return RecordQueryPlan(
@@ -115,5 +142,6 @@ def build_record_query(
         parent_ids=tuple(parent_fields),
         geography_fields=tuple(geography_fields),
         variables=variables,
+        variable_fields=variable_fields,
         spc=spc,
     )
