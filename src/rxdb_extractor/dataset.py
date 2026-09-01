@@ -9,7 +9,7 @@ from .executor import EntityExtraction, PlanExecutor, extract_entity_batches
 from .identity import add_canonical_keys
 from .manifest import semantic_hash, write_json_atomic
 from .reports import ValidationReport, build_validation_report, write_validation_report
-from .validation import CheckResult, validate_foreign_key, validate_unique_key
+from .validation import CheckResult, validate_count, validate_foreign_key, validate_unique_key
 
 
 @dataclass(frozen=True)
@@ -88,11 +88,12 @@ def run_slice(
     output_dir: str | Path,
     spec: SliceSpec,
     provenance: Mapping[str, object] | None = None,
+    expected_counts: Mapping[str, int] | None = None,
 ) -> SliceResult:
     """Run a fully configured multi-entity extraction slice.
 
     The executor callback is the only live-runtime boundary. Everything else—batching,
-    key projection, Parquet persistence, PK/FK validation and manifests—is runtime
+    key projection, Parquet persistence, count/PK/FK validation and manifests—is runtime
     independent and can be exercised with deterministic fixtures.
     """
 
@@ -100,6 +101,14 @@ def run_slice(
     destination.mkdir(parents=True, exist_ok=True)
     results: dict[str, EntityResult] = {}
     checks: list[CheckResult] = []
+    expected_counts = dict(expected_counts or {})
+
+    unknown_expected = set(expected_counts) - {job.entity for job in spec.entities}
+    if unknown_expected:
+        raise ValueError(
+            "expected counts reference entities outside slice: "
+            + ", ".join(sorted(unknown_expected))
+        )
 
     for job in spec.entities:
         extraction = extract_entity_batches(
@@ -127,6 +136,10 @@ def run_slice(
             rows,
         )
         results[job.entity] = EntityResult(extraction, artifact, rows)
+        if job.entity in expected_counts:
+            checks.append(
+                validate_count(rows, entity=job.entity, expected=expected_counts[job.entity])
+            )
         if job.primary_key is not None:
             checks.append(validate_unique_key(rows, job.primary_key))
 
@@ -155,6 +168,7 @@ def run_slice(
             "query_hashes": [
                 semantic_hash({"spc": plan.spc}) for plan in result.extraction.plans
             ],
+            "expected_count": expected_counts.get(name),
         }
 
     manifest: dict[str, object] = {
