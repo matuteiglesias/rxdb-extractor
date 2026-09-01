@@ -1,4 +1,12 @@
-from rxdb_extractor.validation import validate_foreign_key, validate_unique_key
+from rxdb_extractor.validation import validate_count, validate_foreign_key, validate_unique_key
+
+
+def test_count_validation():
+    rows = [{"id": 1}, {"id": 2}]
+    passed = validate_count(rows, entity="PERSONA", expected=2)
+    failed = validate_count(rows, entity="PERSONA", expected=3)
+    assert passed.passed and passed.observed == passed.expected == 2
+    assert not failed.passed and failed.detail == "delta=-1"
 
 
 def test_unique_key_pass_and_fail():
