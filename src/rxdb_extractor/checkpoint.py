@@ -63,6 +63,9 @@ class CheckpointStore:
             raise CheckpointError("checkpoint name must be a simple path component")
         return self.root / f"{name}.json"
 
+    def invalidate(self, name: str) -> None:
+        self.path_for(name).unlink(missing_ok=True)
+
     def _write_payload(self, name: str, payload: str) -> Path:
         self.root.mkdir(parents=True, exist_ok=True)
         target = self.path_for(name)
