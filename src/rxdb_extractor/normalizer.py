@@ -10,17 +10,26 @@ def normalize_frequency_rows(
     dimension_fields: tuple[str, ...],
     mask_fields: Mapping[str, str],
     count_field: str = "count",
+    preserve_mask_fields: tuple[str, ...] = (),
 ) -> list[dict[str, object]]:
     """Keep complete non-margin FREQ cells and enforce record invariants.
 
     ``mask_fields`` maps every dimension field to the corresponding RedEngine mask
-    field. Mask value 1 denotes a margin/total cell in the validated baseline.
+    field. Mask value 1 denotes a margin/total cell in the validated baseline. Other
+    source mask states are retained; for stored variables requested through
+    ``preserve_mask_fields`` they are emitted as ``<field>__mask`` companion columns.
     """
     required_dimensions = (id_field, *dimension_fields)
     missing_masks = [field for field in required_dimensions if field not in mask_fields]
     if missing_masks:
         raise NormalizationError(
             "missing mask mapping for dimensions: " + ", ".join(missing_masks)
+        )
+    unknown_preserved = set(preserve_mask_fields) - set(required_dimensions)
+    if unknown_preserved:
+        raise NormalizationError(
+            "cannot preserve masks for non-dimensions: "
+            + ", ".join(sorted(unknown_preserved))
         )
 
     output: list[dict[str, object]] = []
@@ -39,5 +48,35 @@ def normalize_frequency_rows(
                 f"record cell {record_id!r} has non-unit count {count!r}"
             )
         seen.add(record_id)
-        output.append({field: raw.get(field) for field in required_dimensions})
+        record = {field: raw.get(field) for field in required_dimensions}
+        for field in preserve_mask_fields:
+            record[f"{field}__mask"] = raw.get(mask_fields[field])
+        output.append(record)
     return output
+
+
+def normalize_frequency_distribution(
+    rows: Iterable[Mapping[str, object]],
+    *,
+    dimension_field: str,
+    mask_field: str,
+    count_field: str = "count",
+) -> dict[tuple[object, object], int]:
+    """Normalize a one-dimensional source FREQ for independent reaggregation.
+
+    The key is ``(value, mask)`` so structural/missing states remain distinct. Margin
+    cells (mask=1) are excluded, matching the record-emission semantics.
+    """
+    distribution: dict[tuple[object, object], int] = {}
+    for raw in rows:
+        mask = raw.get(mask_field)
+        if mask == 1:
+            continue
+        count = raw.get(count_field)
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            raise NormalizationError(f"invalid frequency count {count!r}")
+        key = (raw.get(dimension_field), mask)
+        if key in distribution:
+            raise NormalizationError(f"duplicate source frequency cell {key!r}")
+        distribution[key] = count
+    return distribution
