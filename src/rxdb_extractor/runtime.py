@@ -6,6 +6,18 @@ from typing import Mapping, Protocol
 from .capabilities import CapabilitySet
 from .normalizer import normalize_frequency_rows
 from .planner import RecordQueryPlan
+from .schema import DatabaseSchema
+
+
+@dataclass(frozen=True)
+class RuntimeInspection:
+    schema: DatabaseSchema
+    metadata: Mapping[str, object]
+
+    def to_dict(self) -> dict[str, object]:
+        payload = self.schema.to_dict()
+        payload["metadata"] = dict(self.metadata)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -20,7 +32,7 @@ class RuntimeAdapter(Protocol):
 
     def capabilities(self) -> CapabilitySet: ...
 
-    def inspect(self, database: str) -> dict[str, object]: ...
+    def inspect(self, database: str) -> RuntimeInspection: ...
 
     def execute_record_plan(
         self, database: str, plan: RecordQueryPlan
