@@ -15,14 +15,8 @@ def _short(expression: str) -> str:
 
 
 _BASE = {
-    "VIVIENDA": [
-        {"XVID": 1},
-        {"XVID": 2},
-    ],
-    "HOGAR": [
-        {"XHID": 1, "XVID": 1},
-        {"XHID": 2, "XVID": 2},
-    ],
+    "VIVIENDA": [{"XVID": 1}, {"XVID": 2}],
+    "HOGAR": [{"XHID": 1, "XVID": 1}, {"XHID": 2, "XVID": 2}],
     "PERSONA": [
         {"XPID": 1, "XHID": 1, "XVID": 1},
         {"XPID": 2, "XHID": 1, "XVID": 1},
@@ -63,6 +57,7 @@ def _spec():
             EntityJob(
                 entity="HOGAR",
                 own_id="XHID",
+                prelude_definitions=(("VIVIENDA", "XVID", "NUMBER RADIO"),),
                 parent_inheritance=(("XVID", "VIVIENDA.XVID"),),
                 geography_entities=("RADIO",),
                 variables=("HOGAR.H10",),
@@ -75,6 +70,11 @@ def _spec():
             EntityJob(
                 entity="PERSONA",
                 own_id="XPID",
+                prelude_definitions=(
+                    ("VIVIENDA", "XVID", "NUMBER RADIO"),
+                    ("HOGAR", "XHID", "NUMBER RADIO"),
+                    ("HOGAR", "XVID", "VIVIENDA.XVID"),
+                ),
                 parent_inheritance=(
                     ("XHID", "HOGAR.XHID"),
                     ("XVID", "VIVIENDA.XVID"),
@@ -104,17 +104,15 @@ def test_three_entity_slice_writes_relational_dataset(tmp_path):
         spec=_spec(),
         provenance={"source": "fixture"},
     )
-
     assert result.validation.passed
-    assert len(result.entities["VIVIENDA"].rows) == 2
-    assert len(result.entities["HOGAR"].rows) == 2
-    assert len(result.entities["PERSONA"].rows) == 3
-
+    assert [len(result.entities[name].rows) for name in ("VIVIENDA", "HOGAR", "PERSONA")] == [2, 2, 3]
     persons = read_parquet_rows(tmp_path / "persona.parquet")
     assert persons[0]["persona_key"] == "061471101:1"
     assert persons[1]["hogar_key"] == "061471101:1"
     assert persons[2]["vivienda_key"] == "061471101:2"
-
+    persona_spc = result.entities["PERSONA"].extraction.plans[0].spc
+    assert "DEFINE VIVIENDA.XVID AS NUMBER RADIO" in persona_spc
+    assert "DEFINE HOGAR.XHID AS NUMBER RADIO" in persona_spc
     validation = json.loads((tmp_path / "validation.json").read_text())
     manifest = json.loads((tmp_path / "dataset-manifest.json").read_text())
     assert validation["status"] == "pass"
