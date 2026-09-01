@@ -22,5 +22,9 @@ class NormalizationError(RxdbError):
     """Raised when a FREQ result cannot safely be interpreted as records."""
 
 
+class ValidationError(RxdbError):
+    """Raised when an extraction fails a required data-integrity validation."""
+
+
 class CheckpointError(RxdbError):
     """Raised when a provenance checkpoint is invalid or unsafe."""
