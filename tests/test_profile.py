@@ -7,6 +7,18 @@ from rxdb_extractor.profile import compile_profile, load_profile
 from rxdb_extractor.schema import DatabaseSchema, Entity, Variable
 
 
+_PARENT_MAP = {
+    "CPV2022": None,
+    "PROV": "CPV2022",
+    "DPTO": "PROV",
+    "FRAC": "DPTO",
+    "RADIO": "FRAC",
+    "VIVIENDA": "RADIO",
+    "HOGAR": "VIVIENDA",
+    "PERSONA": "HOGAR",
+}
+
+
 def _schema():
     return DatabaseSchema.from_entities(
         [
@@ -24,6 +36,19 @@ def _schema():
             ),
         ]
     )
+
+
+def _flat_schema():
+    entities = []
+    for entity in _schema().entities.values():
+        entities.append(
+            Entity(
+                entity.name,
+                selectable=entity.selectable,
+                variables=entity.variables,
+            )
+        )
+    return DatabaseSchema.from_entities(entities)
 
 
 def _profile():
@@ -91,6 +116,21 @@ def test_compile_profile_derives_variables_and_native_hierarchy():
         ("XHID", "HOGAR.XHID"),
     }
     assert len(spec.foreign_keys) == 3
+
+
+def test_profile_parent_map_can_augment_flat_runtime_metadata():
+    profile = _profile()
+    profile["parent_map"] = _PARENT_MAP
+    spec = compile_profile(_flat_schema(), profile, selection_code="061471101")
+    persona = next(job for job in spec.entities if job.entity == "PERSONA")
+    assert persona.prelude_definitions[-1] == ("HOGAR", "XVID", "VIVIENDA.XVID")
+
+
+def test_profile_parent_map_cannot_override_runtime_parent():
+    profile = _profile()
+    profile["parent_map"] = dict(_PARENT_MAP, HOGAR="RADIO")
+    with pytest.raises(PlanningError, match="conflicts for HOGAR"):
+        compile_profile(_schema(), profile, selection_code="061471101")
 
 
 def test_ambiguous_variable_must_be_explicitly_blocked():
