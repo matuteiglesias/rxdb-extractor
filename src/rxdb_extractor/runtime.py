@@ -52,6 +52,7 @@ def normalized_plan_executor(runtime: RuntimeAdapter, database: str):
             dimension_fields=plan.dimension_fields[1:],
             mask_fields=result.mask_fields,
             count_field=result.count_field,
+            preserve_mask_fields=plan.variable_fields,
         )
 
     return execute
