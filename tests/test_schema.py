@@ -1,7 +1,7 @@
 import pytest
 
 from rxdb_extractor.errors import SchemaError
-from rxdb_extractor.schema import DatabaseSchema, Entity
+from rxdb_extractor.schema import DatabaseSchema, Entity, Variable
 
 
 def vp_schema():
@@ -11,9 +11,13 @@ def vp_schema():
         Entity("DPTO", parent="PROV", selectable=True),
         Entity("FRAC", parent="DPTO", selectable=True),
         Entity("RADIO", parent="FRAC", selectable=True),
-        Entity("VIVIENDA", parent="RADIO"),
-        Entity("HOGAR", parent="VIVIENDA"),
-        Entity("PERSONA", parent="HOGAR"),
+        Entity("VIVIENDA", parent="RADIO", variables=(Variable("V01"),)),
+        Entity("HOGAR", parent="VIVIENDA", variables=(Variable("H10"),)),
+        Entity(
+            "PERSONA",
+            parent="HOGAR",
+            variables=(Variable("P02", "SEXO"), Variable("HNVUA", "HNVUA")),
+        ),
     ])
 
 
@@ -22,6 +26,23 @@ def test_hierarchy_and_nearest_selectable_ancestor():
     assert [x.name for x in schema.ancestors("PERSONA")][-3:] == ["RADIO", "VIVIENDA", "HOGAR"]
     assert schema.nearest_selectable_ancestor("PERSONA").name == "RADIO"
     assert [x.name for x in schema.leaves()] == ["PERSONA"]
+    assert [x.name for x in schema.path("RADIO", "PERSONA")] == [
+        "RADIO", "VIVIENDA", "HOGAR", "PERSONA"
+    ]
+    assert [x.name for x in schema.descendants("VIVIENDA")] == ["HOGAR", "PERSONA"]
+
+
+def test_schema_roundtrip_preserves_entities_variables_and_aliases():
+    original = vp_schema()
+    restored = DatabaseSchema.from_dict(original.to_dict())
+    assert restored.to_dict() == original.to_dict()
+    assert restored.entities["PERSONA"].variables[0].alias == "SEXO"
+    assert restored.entities["PERSONA"].variables[1].ambiguous_name_alias
+
+
+def test_invalid_schema_payload_is_rejected():
+    with pytest.raises(SchemaError, match="entities list"):
+        DatabaseSchema.from_dict({})
 
 
 def test_missing_parent_rejected():
