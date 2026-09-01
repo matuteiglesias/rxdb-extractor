@@ -16,3 +16,7 @@ class PlanningError(RxdbError):
 
 class NormalizationError(RxdbError):
     """Raised when a FREQ result cannot safely be interpreted as records."""
+
+
+class CheckpointError(RxdbError):
+    """Raised when a provenance checkpoint is invalid or unsafe."""
