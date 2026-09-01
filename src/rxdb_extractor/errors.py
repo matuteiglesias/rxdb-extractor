@@ -1,0 +1,18 @@
+class RxdbError(Exception):
+    """Base error for rxdb-extractor."""
+
+
+class CapabilityError(RxdbError):
+    """Raised when the runtime lacks a launch-critical capability."""
+
+
+class SchemaError(RxdbError):
+    """Raised when the database entity graph is inconsistent or unsupported."""
+
+
+class PlanningError(RxdbError):
+    """Raised when a deterministic extraction query cannot be planned."""
+
+
+class NormalizationError(RxdbError):
+    """Raised when a FREQ result cannot safely be interpreted as records."""

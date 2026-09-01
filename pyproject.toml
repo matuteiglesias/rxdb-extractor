@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rxdb-extractor"
+version = "0.0.1"
+description = "Provenance-first relational extraction from RedatamX/RXDB databases"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Matias Iglesias"}]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+rxdb = "rxdb_extractor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
