@@ -1,17 +1,23 @@
 import argparse
 import json
 from pathlib import Path
+import shlex
 
 from . import __version__
+from .bridge import JsonSubprocessRuntime
 from .reports import read_validation_report
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rxdb")
     parser.add_argument("--version", action="version", version=__version__)
+    parser.add_argument(
+        "--bridge",
+        help="JSON runtime bridge command, e.g. 'Rscript redengine_bridge.R'",
+    )
     sub = parser.add_subparsers(dest="command")
 
-    inspect = sub.add_parser("inspect", help="inspect an RXDB schema")
+    inspect = sub.add_parser("inspect", help="inspect an RXDB schema through a runtime bridge")
     inspect.add_argument("database")
 
     extract = sub.add_parser("extract", help="extract relational records")
@@ -31,6 +37,13 @@ def _validation_path(path: str) -> Path:
     return candidate
 
 
+def _bridge_runtime(command: str | None) -> JsonSubprocessRuntime | None:
+    if command is None:
+        return None
+    parts = shlex.split(command)
+    return JsonSubprocessRuntime(parts)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -43,6 +56,23 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload.get("status") == "pass" else 1
 
-    # Live runtime execution deliberately lands after the stable pure contracts.
-    print(json.dumps({"command": args.command, "status": "runtime-not-configured"}))
+    runtime = _bridge_runtime(args.bridge)
+    if args.command == "inspect" and runtime is not None:
+        payload = {
+            "capabilities": runtime.capabilities().to_dict(),
+            "database": runtime.inspect(args.database),
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    print(
+        json.dumps(
+            {
+                "command": args.command,
+                "status": "runtime-not-configured"
+                if runtime is None
+                else "not-implemented",
+            }
+        )
+    )
     return 2
