@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from .capabilities import CapabilitySet
-from .errors import RuntimeBridgeError
+from .errors import RuntimeBridgeError, SchemaError
 from .planner import RecordQueryPlan
-from .runtime import FrequencyResult
+from .runtime import FrequencyResult, RuntimeInspection
+from .schema import DatabaseSchema
 
 
 PROTOCOL_VERSION = "1"
@@ -86,8 +87,16 @@ class JsonSubprocessRuntime:
         except KeyError as exc:
             raise RuntimeBridgeError(f"capability response missing {exc.args[0]}") from exc
 
-    def inspect(self, database: str) -> dict[str, object]:
-        return dict(self._request("inspect", database=database))
+    def inspect(self, database: str) -> RuntimeInspection:
+        result = self._request("inspect", database=database)
+        try:
+            schema = DatabaseSchema.from_dict(result)
+        except SchemaError as exc:
+            raise RuntimeBridgeError(f"invalid inspect schema: {exc}") from exc
+        metadata = result.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise RuntimeBridgeError("inspect metadata must be an object")
+        return RuntimeInspection(schema=schema, metadata=metadata)
 
     def execute_record_plan(
         self, database: str, plan: RecordQueryPlan
