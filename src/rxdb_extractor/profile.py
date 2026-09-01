@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Mapping
 
 from .dataset import EntityJob, ForeignKeyJob, KeyProjection, SliceSpec
-from .errors import PlanningError
+from .errors import PlanningError, SchemaError
 from .hierarchy import build_hierarchy_projection
 from .schema import DatabaseSchema
 
@@ -38,6 +38,20 @@ def _id_fields(payload: Mapping[str, object]) -> dict[str, str]:
     if not all(isinstance(key, str) and isinstance(value, str) for key, value in raw.items()):
         raise PlanningError("profile id_fields must map strings to strings")
     return dict(raw)
+
+
+def _parent_map(payload: Mapping[str, object]) -> dict[str, str | None]:
+    raw = payload.get("parent_map")
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise PlanningError("profile parent_map must be an object")
+    output: dict[str, str | None] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or (value is not None and not isinstance(value, str)):
+            raise PlanningError("profile parent_map must map strings to strings/null")
+        output[key] = value
+    return output
 
 
 def _stored_variables(
@@ -77,7 +91,18 @@ def compile_profile(
     batch_width: int | None = None,
     use_cmpcode: bool = True,
 ) -> SliceSpec:
-    """Compile a portable adapter profile into the generic extraction contract."""
+    """Compile a portable adapter profile into the generic extraction contract.
+
+    A profile may supply ``parent_map`` when the runtime's metadata API is flat. Any
+    parent relationship already supplied by the runtime must agree with the profile.
+    """
+
+    parent_map = _parent_map(profile)
+    if parent_map:
+        try:
+            schema = schema.with_parent_map(parent_map)
+        except SchemaError as exc:
+            raise PlanningError(f"profile hierarchy is incompatible with runtime: {exc}") from exc
 
     selection_entity = _string(profile, "selection_entity")
     identity_scope = _string(profile, "identity_scope")
@@ -108,7 +133,6 @@ def compile_profile(
             raise PlanningError(
                 f"profile own ID mismatch for {entity}: {own_id!r} != {id_fields.get(entity)!r}"
             )
-        # Selection and identity geography must be ancestors of every target entity.
         ancestor_names = {item.name for item in schema.ancestors(entity)}
         if selection_entity not in ancestor_names:
             raise PlanningError(f"{selection_entity} is not an ancestor of {entity}")
@@ -179,8 +203,10 @@ def compile_profile(
             )
         )
 
-    effective_width = batch_width if batch_width is not None else int(profile.get("batch_width", 5))
-    if effective_width < 1:
+    raw_width = batch_width if batch_width is not None else profile.get("batch_width", 5)
+    if isinstance(raw_width, bool) or not isinstance(raw_width, int):
+        raise PlanningError("batch width must be an integer")
+    if raw_width < 1:
         raise PlanningError("batch width must be >= 1")
     return SliceSpec(
         selection_entity=selection_entity,
@@ -189,6 +215,6 @@ def compile_profile(
         scope_field=scope_field,
         entities=tuple(jobs),
         foreign_keys=tuple(relations),
-        batch_width=effective_width,
+        batch_width=raw_width,
         use_cmpcode=use_cmpcode,
     )
