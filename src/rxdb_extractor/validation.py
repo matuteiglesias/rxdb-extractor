@@ -11,6 +11,22 @@ class CheckResult:
     detail: str | None = None
 
 
+def validate_count(
+    rows: Iterable[Mapping[str, object]],
+    *,
+    entity: str,
+    expected: int,
+) -> CheckResult:
+    observed = sum(1 for _ in rows)
+    return CheckResult(
+        name=f"count:{entity}",
+        passed=observed == expected,
+        observed=observed,
+        expected=expected,
+        detail=None if observed == expected else f"delta={observed - expected}",
+    )
+
+
 def validate_unique_key(rows: Iterable[Mapping[str, object]], key: str) -> CheckResult:
     values = [row.get(key) for row in rows]
     missing = sum(value is None for value in values)
