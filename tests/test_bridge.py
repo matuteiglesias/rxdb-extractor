@@ -28,7 +28,7 @@ elif action == "inspect":
         "entities": [
             {"name":"RADIO","alias":None,"parent":None,"selectable":True,"variables":[]},
             {"name":"PERSONA","alias":None,"parent":"RADIO","selectable":False,
-             "variables":[{"name":"P02","alias":"SEXO","label":"Sex"}]},
+             "variables":[{"name":"P02","alias":"SEXO","label":"Sex","type_name":"INTEGER"}]},
         ],
         "metadata": {"database": req["database"]},
     }
@@ -76,6 +76,7 @@ def test_json_subprocess_runtime_capabilities_inspect_and_records(tmp_path):
     assert inspection.metadata["database"] == "demo.rxdb"
     assert inspection.schema.entities["PERSONA"].parent == "RADIO"
     assert inspection.schema.entities["PERSONA"].variables[0].alias == "SEXO"
+    assert inspection.schema.entities["PERSONA"].variables[0].type_name == "INTEGER"
 
     plan = build_record_query(
         entity="PERSONA",
@@ -89,8 +90,8 @@ def test_json_subprocess_runtime_capabilities_inspect_and_records(tmp_path):
     execute = normalized_plan_executor(runtime, "demo.rxdb")
     rows = execute(plan)
     assert rows == [
-        {"XPID": 1, "XRADIO": "061471101", "P02": "P02-1"},
-        {"XPID": 2, "XRADIO": "061471101", "P02": "P02-2"},
+        {"XPID": 1, "XRADIO": "061471101", "P02": "P02-1", "P02__mask": 0},
+        {"XPID": 2, "XRADIO": "061471101", "P02": "P02-2", "P02__mask": 0},
     ]
 
 
