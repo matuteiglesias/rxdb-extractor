@@ -12,6 +12,7 @@ class CapabilitySet:
     freq: bool
     cmpcode: bool = False
     table_view: bool = False
+    redatamx_version: str | None = None
 
     def require_record_extraction(self) -> None:
         missing = [
