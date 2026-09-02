@@ -109,12 +109,11 @@ def test_compile_profile_derives_variables_and_native_hierarchy():
     assert persona.prelude_definitions == (
         ("VIVIENDA", "XVID", "NUMBER RADIO"),
         ("HOGAR", "XHID", "NUMBER RADIO"),
-        ("HOGAR", "XVID", "VIVIENDA.XVID"),
     )
-    assert set(persona.parent_inheritance) == {
-        ("XVID", "HOGAR.XVID"),
+    assert persona.parent_inheritance == (
+        ("XVID", "VIVIENDA.XVID"),
         ("XHID", "HOGAR.XHID"),
-    }
+    )
     assert len(spec.foreign_keys) == 3
 
 
@@ -123,7 +122,14 @@ def test_profile_parent_map_can_augment_flat_runtime_metadata():
     profile["parent_map"] = _PARENT_MAP
     spec = compile_profile(_flat_schema(), profile, selection_code="061471101")
     persona = next(job for job in spec.entities if job.entity == "PERSONA")
-    assert persona.prelude_definitions[-1] == ("HOGAR", "XVID", "VIVIENDA.XVID")
+    assert persona.prelude_definitions == (
+        ("VIVIENDA", "XVID", "NUMBER RADIO"),
+        ("HOGAR", "XHID", "NUMBER RADIO"),
+    )
+    assert persona.parent_inheritance == (
+        ("XVID", "VIVIENDA.XVID"),
+        ("XHID", "HOGAR.XHID"),
+    )
 
 
 def test_profile_parent_map_cannot_override_runtime_parent():
