@@ -33,9 +33,7 @@ def _variable_batches(
     width: int,
     blocked: frozenset[str],
 ) -> tuple[VariableBatch, ...]:
-    batches = batch_variables(variables, width=width, blocked=blocked)
-    # ID-only extraction is still meaningful and provides a count/identity proof.
-    return batches or (VariableBatch(0, ()),)
+    return batch_variables(variables, width=width, blocked=blocked)
 
 
 def extract_entity_batches(
@@ -54,9 +52,37 @@ def extract_entity_batches(
     blocked_variables: frozenset[str] = frozenset(),
     use_cmpcode: bool = True,
 ) -> EntityExtraction:
+    """Extract one entity using an identity backbone plus narrow payload batches.
+
+    Parent IDs and geography are recovered exactly once in a low-dimensional identity
+    query. Stored variables are then extracted in separate batches keyed only by the
+    entity's own deterministic NUMBER sequence. This keeps arbitrary payload variables
+    from perturbing hierarchy recovery and reduces FREQ dimensionality. All pieces are
+    joined by the explicit own ID; positional assembly is never used.
+    """
+
     plans: list[RecordQueryPlan] = []
     normalized_batches: list[list[dict[str, object]]] = []
 
+    # Stable identity/hierarchy backbone. This is deliberately independent of stored
+    # Census variables and therefore remains small and easy to validate.
+    identity_plan = build_record_query(
+        entity=entity,
+        selection_entity=selection_entity,
+        selection_code=selection_code,
+        identity_scope=identity_scope,
+        own_id=own_id,
+        prelude_definitions=prelude_definitions,
+        parent_inheritance=parent_inheritance,
+        geography_entities=geography_entities,
+        variables=(),
+        use_cmpcode=use_cmpcode,
+    )
+    plans.append(identity_plan)
+    normalized_batches.append(execute(identity_plan))
+
+    # Payload batches need only the entity's own deterministic ID. Parent IDs and
+    # geography come from the backbone above and are merged by that explicit key.
     for batch in _variable_batches(
         variables, width=batch_width, blocked=blocked_variables
     ):
@@ -66,11 +92,11 @@ def extract_entity_batches(
             selection_code=selection_code,
             identity_scope=identity_scope,
             own_id=own_id,
-            prelude_definitions=prelude_definitions,
-            parent_inheritance=parent_inheritance,
-            geography_entities=geography_entities,
+            prelude_definitions=(),
+            parent_inheritance=(),
+            geography_entities=(),
             variables=batch.variables,
-            use_cmpcode=use_cmpcode,
+            use_cmpcode=False,
         )
         plans.append(plan)
         normalized_batches.append(execute(plan))
