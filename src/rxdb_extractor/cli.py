@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import shlex
@@ -9,7 +10,7 @@ from .bridge import JsonSubprocessRuntime
 from .dataset import run_slice
 from .errors import RxdbError
 from .manifest import semantic_hash
-from .orchestration import RunProvenance, run_partitions
+from .orchestration import PartitionOutcome, RunProvenance, run_partitions
 from .partitions import load_partition_requests
 from .persistent_bridge import JsonPersistentSubprocessRuntime
 from .profile import compile_profile, load_profile
@@ -74,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit",
         type=int,
         help="run only the first N partition requests (qualification/debugging)",
+    )
+    many.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="independent bridge/RedEngine workers; default 1, choose explicitly based on RAM",
     )
 
     validate = sub.add_parser("validate", help="read a persisted validation report")
@@ -140,6 +147,37 @@ def _run_extract(args, runtime) -> int:
     return 0 if result.validation.passed else 1
 
 
+def _run_partition_chunk(
+    args,
+    *,
+    requests,
+    output_root: Path,
+    base_spec,
+    provenance: RunProvenance,
+) -> tuple[PartitionOutcome, ...]:
+    worker_runtime = _bridge_runtime(
+        args.bridge,
+        persistent=args.persistent_bridge,
+        timeout=args.bridge_timeout,
+    )
+    if worker_runtime is None:  # pragma: no cover - guarded by main
+        raise ValueError("bridge runtime is required")
+    try:
+        execute = normalized_plan_executor(worker_runtime, args.database)
+        return run_partitions(
+            execute=execute,
+            output_root=output_root,
+            base_spec=base_spec,
+            requests=requests,
+            provenance=provenance,
+            resume=not args.no_resume,
+        )
+    finally:
+        close = getattr(worker_runtime, "close", None)
+        if callable(close):
+            close()
+
+
 def _run_extract_many(args, runtime) -> int:
     requests = load_partition_requests(args.partitions)
     if args.limit is not None:
@@ -148,6 +186,8 @@ def _run_extract_many(args, runtime) -> int:
         requests = requests[: args.limit]
     if not requests:
         raise ValueError("no partitions selected")
+    if args.workers < 1 or args.workers > 32:
+        raise ValueError("--workers must be between 1 and 32")
 
     capabilities = runtime.capabilities()
     capabilities.require_record_extraction()
@@ -160,7 +200,6 @@ def _run_extract_many(args, runtime) -> int:
         batch_width=args.batch_width,
         use_cmpcode=capabilities.cmpcode,
     )
-    execute = normalized_plan_executor(runtime, args.database)
 
     source_hash = args.source_hash or rxdb_source_family_hash(args.database)
     provenance = RunProvenance(
@@ -171,14 +210,46 @@ def _run_extract_many(args, runtime) -> int:
     )
     output_root = Path(args.output_root).expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-    outcomes = run_partitions(
-        execute=execute,
-        output_root=output_root,
-        base_spec=base_spec,
-        requests=requests,
-        provenance=provenance,
-        resume=not args.no_resume,
-    )
+    worker_count = min(args.workers, len(requests))
+
+    if worker_count == 1:
+        execute = normalized_plan_executor(runtime, args.database)
+        outcomes = run_partitions(
+            execute=execute,
+            output_root=output_root,
+            base_spec=base_spec,
+            requests=requests,
+            provenance=provenance,
+            resume=not args.no_resume,
+        )
+    else:
+        # The inspection runtime is no longer needed. Closing it prevents an extra
+        # persistent RedEngine process from consuming memory beside the N workers.
+        close = getattr(runtime, "close", None)
+        if callable(close):
+            close()
+        chunks = tuple(
+            tuple(requests[index::worker_count]) for index in range(worker_count)
+        )
+        outcome_by_code: dict[str, PartitionOutcome] = {}
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            futures = [
+                pool.submit(
+                    _run_partition_chunk,
+                    args,
+                    requests=chunk,
+                    output_root=output_root,
+                    base_spec=base_spec,
+                    provenance=provenance,
+                )
+                for chunk in chunks
+                if chunk
+            ]
+            for future in futures:
+                for outcome in future.result():
+                    outcome_by_code[outcome.selection_code] = outcome
+        outcomes = tuple(outcome_by_code[request.selection_code] for request in requests)
+
     summary = {
         "status": "pass",
         "database": str(Path(args.database).expanduser().resolve()),
@@ -188,6 +259,7 @@ def _run_extract_many(args, runtime) -> int:
         "partition_count": len(outcomes),
         "completed": sum(item.status == "completed" for item in outcomes),
         "skipped": sum(item.status == "skipped" for item in outcomes),
+        "workers": worker_count,
         "source_hash": source_hash,
         "profile_hash": provenance.profile_hash,
         "schema_hash": provenance.schema_hash,
