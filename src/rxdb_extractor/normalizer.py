@@ -18,6 +18,10 @@ def normalize_frequency_rows(
     field. Mask value 1 denotes a margin/total cell in the validated baseline. Other
     source mask states are retained; for stored variables requested through
     ``preserve_mask_fields`` they are emitted as ``<field>__mask`` companion columns.
+
+    Identity and hierarchy dimensions must never be null in a surviving record cell.
+    Stored variables may legitimately be null when their non-margin mask represents a
+    source missing/structural state.
     """
     required_dimensions = (id_field, *dimension_fields)
     missing_masks = [field for field in required_dimensions if field not in mask_fields]
@@ -32,14 +36,34 @@ def normalize_frequency_rows(
             + ", ".join(sorted(unknown_preserved))
         )
 
+    # Stored variables are allowed to carry source-missing values. Every other
+    # dimension is structural identity/hierarchy/geography and must be concrete.
+    structural_dimensions = tuple(
+        field for field in required_dimensions if field not in preserve_mask_fields
+    )
+
     output: list[dict[str, object]] = []
     seen: set[object] = set()
     for raw in rows:
         if any(raw.get(mask_fields[field]) == 1 for field in required_dimensions):
             continue
+
+        missing_structural = [
+            field for field in structural_dimensions if raw.get(field) is None
+        ]
+        if missing_structural:
+            details = ", ".join(
+                f"{field}={raw.get(field)!r} mask={raw.get(mask_fields[field])!r}"
+                for field in structural_dimensions
+            )
+            raise NormalizationError(
+                "complete record cell has null structural dimension(s) "
+                + ", ".join(missing_structural)
+                + "; "
+                + details
+            )
+
         record_id = raw.get(id_field)
-        if record_id is None:
-            raise NormalizationError("complete record cell has no own ID")
         if record_id in seen:
             raise NormalizationError(f"duplicate record ID: {record_id!r}")
         count = raw.get(count_field)
