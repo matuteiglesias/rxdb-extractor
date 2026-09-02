@@ -2,9 +2,11 @@
 
 # Reference protocol-v1 bridge for the CRAN redatamx package.
 #
-# STATUS: implementation candidate; not yet qualified against the user's local
-# RedEngine 1.3.0 Census 2022 runtime. It deliberately uses only supported
-# redatamx APIs and never patches RedEngine or uses TABLE VIEW.
+# The one-shot mode remains the simplest compatibility boundary.  Passing
+# ``--serve`` switches to a JSON-lines loop that keeps R/redatamx and opened
+# databases alive across requests; this is intended for national extraction.
+# It deliberately uses only supported redatamx APIs and never patches RedEngine
+# or uses TABLE VIEW.
 
 suppressPackageStartupMessages(library(redatamx))
 if (!requireNamespace("jsonlite", quietly = TRUE)) {
@@ -12,6 +14,7 @@ if (!requireNamespace("jsonlite", quietly = TRUE)) {
 }
 
 PROTOCOL_VERSION <- "1"
+.database_cache <- new.env(parent = emptyenv())
 
 respond <- function(ok, result = NULL, error = NULL) {
   payload <- list(protocol_version = PROTOCOL_VERSION, ok = ok)
@@ -25,6 +28,7 @@ respond <- function(ok, result = NULL, error = NULL) {
     digits = NA
   ))
   cat("\n")
+  flush(stdout())
 }
 
 nonempty_or_null <- function(x) {
@@ -32,8 +36,7 @@ nonempty_or_null <- function(x) {
   as.character(x)
 }
 
-read_request <- function() {
-  input <- paste(readLines(file("stdin"), warn = FALSE), collapse = "\n")
+parse_request <- function(input) {
   if (!nzchar(input)) stop("empty bridge request")
   request <- jsonlite::fromJSON(input, simplifyVector = FALSE)
   if (!is.list(request)) stop("bridge request must be a JSON object")
@@ -41,6 +44,11 @@ read_request <- function() {
     stop("unsupported protocol version")
   }
   request
+}
+
+read_request <- function() {
+  input <- paste(readLines(file("stdin"), warn = FALSE), collapse = "\n")
+  parse_request(input)
 }
 
 engine_version_tuple <- function(version) {
@@ -75,9 +83,32 @@ capabilities_result <- function() {
   )
 }
 
-inspect_database <- function(database) {
-  dic <- redatam_open(database)
-  on.exit(redatam_close(dic), add = TRUE)
+.database_key <- function(database) {
+  normalizePath(database, mustWork = FALSE)
+}
+
+get_database <- function(database, persistent = FALSE) {
+  if (!persistent) return(redatam_open(database))
+  key <- .database_key(database)
+  if (!exists(key, envir = .database_cache, inherits = FALSE)) {
+    assign(key, redatam_open(database), envir = .database_cache)
+  }
+  get(key, envir = .database_cache, inherits = FALSE)
+}
+
+close_cached_databases <- function() {
+  keys <- ls(envir = .database_cache, all.names = TRUE)
+  for (key in keys) {
+    dic <- get(key, envir = .database_cache, inherits = FALSE)
+    try(redatam_close(dic), silent = TRUE)
+    rm(list = key, envir = .database_cache)
+  }
+  invisible(NULL)
+}
+
+inspect_database <- function(database, persistent = FALSE) {
+  dic <- get_database(database, persistent = persistent)
+  if (!persistent) on.exit(redatam_close(dic), add = TRUE)
 
   entities <- redatam_entities(dic)
   result_entities <- lapply(seq_len(nrow(entities)), function(i) {
@@ -94,9 +125,8 @@ inspect_database <- function(database) {
     list(
       name = entity_name,
       alias = NULL,
-      # redatamx 1.3's public redatam_entities() result does not expose parent
-      # relationships. Portable adapter profiles can supply a validated parent_map;
-      # a future bridge may fill this field from a stronger native metadata API.
+      # redatamx's public entity inventory is flat and does not expose parent
+      # relationships. Portable adapter profiles supply the validated parent_map.
       parent = NULL,
       selectable = isTRUE(as.logical(entities$selectable[[i]])),
       variables = result_variables
@@ -114,15 +144,15 @@ inspect_database <- function(database) {
   )
 }
 
-execute_record_plan <- function(database, plan) {
+execute_record_plan <- function(database, plan, persistent = FALSE) {
   if (is.null(plan$spc) || is.null(plan$dimension_fields) || is.null(plan$own_id)) {
     stop("record plan is missing spc/dimension_fields/own_id")
   }
   dimensions <- unlist(plan$dimension_fields, use.names = FALSE)
   if (!length(dimensions)) stop("record plan has no dimensions")
 
-  dic <- redatam_open(database)
-  on.exit(redatam_close(dic), add = TRUE)
+  dic <- get_database(database, persistent = persistent)
+  if (!persistent) on.exit(redatam_close(dic), add = TRUE)
 
   outputs <- withCallingHandlers(
     redatam_internal_query(dic, as.character(plan$spc)),
@@ -140,8 +170,7 @@ execute_record_plan <- function(database, plan) {
 
   # redatamx's own redatam_query() treats each table dimension as a three-column
   # group and uses every third column as the total/NA/MV mask. FREQ then appends
-  # one final count column. Preserve the raw value + mask here and let the Python
-  # core decide which cells are records.
+  # one final count column. Preserve raw value + mask and let Python normalize.
   expected_cols <- length(dimensions) * 3L + 1L
   if (ncol(raw) != expected_cols) {
     stop(sprintf(
@@ -167,27 +196,52 @@ execute_record_plan <- function(database, plan) {
   list(rows = rows, mask_fields = mask_fields, count_field = "count")
 }
 
-handle_request <- function(request) {
+handle_request <- function(request, persistent = FALSE) {
   action <- as.character(request$action)
   if (identical(action, "capabilities")) {
     return(capabilities_result())
   }
   if (identical(action, "inspect")) {
     if (is.null(request$database)) stop("inspect requires database")
-    return(inspect_database(as.character(request$database)))
+    return(inspect_database(as.character(request$database), persistent = persistent))
   }
   if (identical(action, "execute_record_plan")) {
     if (is.null(request$database) || is.null(request$plan)) {
       stop("execute_record_plan requires database and plan")
     }
-    return(execute_record_plan(as.character(request$database), request$plan))
+    return(execute_record_plan(
+      as.character(request$database), request$plan, persistent = persistent
+    ))
   }
   stop(sprintf("unsupported bridge action: %s", action))
 }
 
-tryCatch({
-  request <- read_request()
-  respond(TRUE, handle_request(request))
-}, error = function(e) {
-  respond(FALSE, error = conditionMessage(e))
-})
+serve_loop <- function() {
+  on.exit(close_cached_databases(), add = TRUE)
+  input <- file("stdin", open = "r")
+  on.exit(close(input), add = TRUE)
+  repeat {
+    line <- readLines(input, n = 1L, warn = FALSE)
+    if (!length(line)) break
+    if (!nzchar(trimws(line))) next
+    tryCatch({
+      request <- parse_request(line)
+      respond(TRUE, handle_request(request, persistent = TRUE))
+    }, error = function(e) {
+      respond(FALSE, error = conditionMessage(e))
+    })
+  }
+  invisible(NULL)
+}
+
+args <- commandArgs(trailingOnly = TRUE)
+if ("--serve" %in% args) {
+  serve_loop()
+} else {
+  tryCatch({
+    request <- read_request()
+    respond(TRUE, handle_request(request, persistent = FALSE))
+  }, error = function(e) {
+    respond(FALSE, error = conditionMessage(e))
+  })
+}
