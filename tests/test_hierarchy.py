@@ -27,7 +27,7 @@ def test_hogar_projection_defines_vivienda_then_inherits_it():
     assert projection.parent_inheritance == (("XVID", "VIVIENDA.XVID"),)
 
 
-def test_person_projection_propagates_all_parent_ids_through_hogar():
+def test_person_projection_inherits_each_parent_id_from_its_owning_ancestor():
     projection = build_hierarchy_projection(
         _schema(),
         target_entity="PERSONA",
@@ -37,9 +37,8 @@ def test_person_projection_propagates_all_parent_ids_through_hogar():
     assert projection.prelude_definitions == (
         ("VIVIENDA", "XVID", "NUMBER RADIO"),
         ("HOGAR", "XHID", "NUMBER RADIO"),
-        ("HOGAR", "XVID", "VIVIENDA.XVID"),
     )
     assert projection.parent_inheritance == (
-        ("XVID", "HOGAR.XVID"),
+        ("XVID", "VIVIENDA.XVID"),
         ("XHID", "HOGAR.XHID"),
     )
