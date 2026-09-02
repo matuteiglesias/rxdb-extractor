@@ -23,7 +23,7 @@ def _fixture_executor(plan):
     return rows
 
 
-def test_batched_executor_merges_by_explicit_id():
+def test_batched_executor_merges_identity_backbone_and_payload_by_explicit_id():
     result = extract_entity_batches(
         execute=_fixture_executor,
         entity="PERSONA",
@@ -36,7 +36,16 @@ def test_batched_executor_merges_by_explicit_id():
         variables=("PERSONA.P01", "PERSONA.P02", "PERSONA.EDAD"),
         batch_width=2,
     )
-    assert len(result.plans) == 2
+    assert len(result.plans) == 3
+    identity, batch1, batch2 = result.plans
+    assert identity.parent_ids == ("XHID",)
+    assert identity.geography_fields == ("XRADIO",)
+    assert identity.variables == ()
+    assert batch1.parent_ids == ()
+    assert batch1.geography_fields == ()
+    assert batch1.variables == ("PERSONA.P01", "PERSONA.P02")
+    assert batch2.variables == ("PERSONA.EDAD",)
+
     assert [row["XPID"] for row in result.rows] == [1, 2]
     assert result.rows[0]["P01"] == "P01-1"
     assert result.rows[0]["P02"] == "P02-1"
@@ -58,6 +67,7 @@ def test_batched_executor_surfaces_blocked_variables():
         blocked_variables=frozenset({"PERSONA.HNVUA"}),
         use_cmpcode=False,
     )
+    assert len(result.plans) == 2
     assert result.blocked_variables == ("PERSONA.HNVUA",)
     assert "HNVUA" not in result.rows[0]
 
