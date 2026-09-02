@@ -83,6 +83,11 @@ class JsonSubprocessRuntime:
                 freq=bool(result["freq"]),
                 cmpcode=bool(result.get("cmpcode", False)),
                 table_view=bool(result.get("table_view", False)),
+                redatamx_version=(
+                    str(result["redatamx_version"])
+                    if result.get("redatamx_version") is not None
+                    else None
+                ),
             )
         except KeyError as exc:
             raise RuntimeBridgeError(f"capability response missing {exc.args[0]}") from exc
