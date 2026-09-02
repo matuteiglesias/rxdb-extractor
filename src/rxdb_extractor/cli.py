@@ -4,13 +4,18 @@ from pathlib import Path
 import shlex
 
 from . import __version__
+from .artifacts import hash_file
 from .bridge import JsonSubprocessRuntime
 from .dataset import run_slice
 from .errors import RxdbError
 from .manifest import semantic_hash
+from .orchestration import RunProvenance, run_partitions
+from .partitions import load_partition_requests
+from .persistent_bridge import JsonPersistentSubprocessRuntime
 from .profile import compile_profile, load_profile
 from .reports import read_validation_report
 from .runtime import normalized_plan_executor
+from .source_identity import rxdb_source_family_hash
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,6 +24,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--bridge",
         help="JSON runtime bridge command, e.g. 'Rscript redengine_bridge.R'",
+    )
+    parser.add_argument(
+        "--persistent-bridge",
+        action="store_true",
+        help="keep one bridge process/database open across requests (bridge must support --serve)",
+    )
+    parser.add_argument(
+        "--bridge-timeout",
+        type=float,
+        default=120.0,
+        help="seconds allowed for each bridge request",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -32,6 +48,34 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--output", required=True)
     extract.add_argument("--batch-width", type=int)
 
+    many = sub.add_parser(
+        "extract-many",
+        help="run a resumable profile extraction across an explicit partition inventory",
+    )
+    many.add_argument("database")
+    many.add_argument("--profile", required=True, help="portable extraction profile JSON")
+    many.add_argument(
+        "--partitions",
+        required=True,
+        help="JSON/CSV/TSV/text partition inventory with selection_code values",
+    )
+    many.add_argument("--output-root", required=True)
+    many.add_argument("--batch-width", type=int)
+    many.add_argument(
+        "--source-hash",
+        help="precomputed exact source-family identity; otherwise RXDB/RBFX files are hashed",
+    )
+    many.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="ignore valid checkpoints and recompute requested partitions",
+    )
+    many.add_argument(
+        "--limit",
+        type=int,
+        help="run only the first N partition requests (qualification/debugging)",
+    )
+
     validate = sub.add_parser("validate", help="read a persisted validation report")
     validate.add_argument("path")
     return parser
@@ -44,14 +88,16 @@ def _validation_path(path: str) -> Path:
     return candidate
 
 
-def _bridge_runtime(command: str | None) -> JsonSubprocessRuntime | None:
+def _bridge_runtime(command: str | None, *, persistent: bool, timeout: float):
     if command is None:
         return None
     parts = shlex.split(command)
-    return JsonSubprocessRuntime(parts)
+    if persistent:
+        return JsonPersistentSubprocessRuntime(parts, timeout_seconds=timeout)
+    return JsonSubprocessRuntime(parts, timeout_seconds=timeout)
 
 
-def _run_extract(args, runtime: JsonSubprocessRuntime) -> int:
+def _run_extract(args, runtime) -> int:
     capabilities = runtime.capabilities()
     capabilities.require_record_extraction()
 
@@ -72,6 +118,9 @@ def _run_extract(args, runtime: JsonSubprocessRuntime) -> int:
         "geography_key_mode": (
             "cmpcode" if capabilities.cmpcode else "selection-code-fallback"
         ),
+        "bridge_transport": (
+            "persistent-json-lines" if args.persistent_bridge else "one-shot-json"
+        ),
     }
     result = run_slice(
         execute=execute,
@@ -85,9 +134,86 @@ def _run_extract(args, runtime: JsonSubprocessRuntime) -> int:
         "manifest": str(Path(args.output) / "dataset-manifest.json"),
         "validation": str(Path(args.output) / "validation.json"),
         "geography_key_mode": provenance["geography_key_mode"],
+        "bridge_transport": provenance["bridge_transport"],
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if result.validation.passed else 1
+
+
+def _run_extract_many(args, runtime) -> int:
+    requests = load_partition_requests(args.partitions)
+    if args.limit is not None:
+        if args.limit < 1:
+            raise ValueError("--limit must be >= 1")
+        requests = requests[: args.limit]
+    if not requests:
+        raise ValueError("no partitions selected")
+
+    capabilities = runtime.capabilities()
+    capabilities.require_record_extraction()
+    inspection = runtime.inspect(args.database)
+    profile = load_profile(args.profile)
+    base_spec = compile_profile(
+        inspection.schema,
+        profile,
+        selection_code=requests[0].selection_code,
+        batch_width=args.batch_width,
+        use_cmpcode=capabilities.cmpcode,
+    )
+    execute = normalized_plan_executor(runtime, args.database)
+
+    source_hash = args.source_hash or rxdb_source_family_hash(args.database)
+    provenance = RunProvenance(
+        source_hash=source_hash,
+        schema_hash=semantic_hash(inspection.schema.to_dict()),
+        profile_hash=semantic_hash(profile),
+        runtime_hash=semantic_hash(capabilities.to_dict()),
+    )
+    output_root = Path(args.output_root).expanduser().resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+    outcomes = run_partitions(
+        execute=execute,
+        output_root=output_root,
+        base_spec=base_spec,
+        requests=requests,
+        provenance=provenance,
+        resume=not args.no_resume,
+    )
+    summary = {
+        "status": "pass",
+        "database": str(Path(args.database).expanduser().resolve()),
+        "output_root": str(output_root),
+        "partition_file": str(Path(args.partitions).expanduser().resolve()),
+        "partition_file_sha256": hash_file(Path(args.partitions).expanduser().resolve()),
+        "partition_count": len(outcomes),
+        "completed": sum(item.status == "completed" for item in outcomes),
+        "skipped": sum(item.status == "skipped" for item in outcomes),
+        "source_hash": source_hash,
+        "profile_hash": provenance.profile_hash,
+        "schema_hash": provenance.schema_hash,
+        "runtime_hash": provenance.runtime_hash,
+        "geography_key_mode": (
+            "cmpcode" if capabilities.cmpcode else "selection-code-fallback"
+        ),
+        "bridge_transport": (
+            "persistent-json-lines" if args.persistent_bridge else "one-shot-json"
+        ),
+        "partitions": [
+            {
+                "selection_code": item.selection_code,
+                "status": item.status,
+                "output_dir": item.output_dir,
+                "checkpoint": item.checkpoint,
+            }
+            for item in outcomes
+        ],
+    }
+    (output_root / "run-manifest.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -97,13 +223,18 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
+    runtime = None
     try:
         if args.command == "validate":
             payload = read_validation_report(_validation_path(args.path))
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 0 if payload.get("status") == "pass" else 1
 
-        runtime = _bridge_runtime(args.bridge)
+        runtime = _bridge_runtime(
+            args.bridge,
+            persistent=args.persistent_bridge,
+            timeout=args.bridge_timeout,
+        )
         if runtime is None:
             print(json.dumps({"command": args.command, "status": "runtime-not-configured"}))
             return 2
@@ -118,8 +249,14 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "extract":
             return _run_extract(args, runtime)
+        if args.command == "extract-many":
+            return _run_extract_many(args, runtime)
     except (RxdbError, OSError, ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"status": "error", "error": str(exc)}))
         return 2
+    finally:
+        close = getattr(runtime, "close", None)
+        if callable(close):
+            close()
 
     return 2
