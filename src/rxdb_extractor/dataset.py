@@ -69,9 +69,14 @@ def _project_keys(
     rows: tuple[dict[str, object], ...],
     *,
     scope_field: str,
+    scope_fallback: str | None,
     keys: tuple[KeyProjection, ...],
 ) -> tuple[dict[str, object], ...]:
-    current = list(rows)
+    current = [dict(row) for row in rows]
+    if scope_fallback is not None:
+        for row in current:
+            if row.get(scope_field) is None:
+                row[scope_field] = scope_fallback
     for key in keys:
         current = add_canonical_keys(
             current,
@@ -95,6 +100,11 @@ def run_slice(
     The executor callback is the only live-runtime boundary. Everything else—batching,
     key projection, Parquet persistence, count/PK/FK validation and manifests—is runtime
     independent and can be exercised with deterministic fixtures.
+
+    When ``@cmpcode`` is unavailable, a selected-area code is a valid identity anchor
+    only if the selection entity is exactly the identity scope. This permits older
+    RedEngine runtimes to recover stable RADIO-scoped record keys without inventing
+    unrelated geography. Finer/ancestor geography remains adapter responsibility.
     """
 
     destination = Path(output_dir)
@@ -109,6 +119,15 @@ def run_slice(
             "expected counts reference entities outside slice: "
             + ", ".join(sorted(unknown_expected))
         )
+
+    scope_fallback: str | None = None
+    if not spec.use_cmpcode:
+        if spec.selection_entity != spec.identity_scope:
+            raise ValueError(
+                "cmpcode-free extraction requires selection_entity == identity_scope; "
+                f"got {spec.selection_entity!r} and {spec.identity_scope!r}"
+            )
+        scope_fallback = spec.selection_code
 
     for job in spec.entities:
         extraction = extract_entity_batches(
@@ -129,6 +148,7 @@ def run_slice(
         rows = _project_keys(
             extraction.rows,
             scope_field=spec.scope_field,
+            scope_fallback=scope_fallback,
             keys=job.keys,
         )
         artifact = write_parquet_atomic(
@@ -179,6 +199,7 @@ def run_slice(
         },
         "identity_scope": spec.identity_scope,
         "scope_field": spec.scope_field,
+        "scope_source": "cmpcode" if spec.use_cmpcode else "selection-code-fallback",
         "batch_width": spec.batch_width,
         "entities": entity_manifest,
         "validation_status": "pass" if validation.passed else "fail",
