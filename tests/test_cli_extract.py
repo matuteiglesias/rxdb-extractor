@@ -55,7 +55,9 @@ elif action == "execute_record_plan":
       "HOGAR": [{"XHID":1,"XVID":1},{"XHID":2,"XVID":2}],
       "PERSONA": [{"XPID":1,"XVID":1,"XHID":1},{"XPID":2,"XVID":1,"XHID":1},{"XPID":3,"XVID":2,"XHID":2}]
     }
-    geo = {"XPROV":"06","XDPTO":"06147","XFRAC":"0614711","XRADIO":"061471101"}
+    selection = plan["selection_code"]
+    radio = selection if len(selection) == 9 else selection + "01"
+    geo = {"XPROV":radio[:2],"XDPTO":radio[:5],"XFRAC":radio[:7],"XRADIO":radio}
     masks = {field: field + "__mask" for field in plan["dimension_fields"]}
     rows = []
     for base in bases[plan["entity"]]:
@@ -114,3 +116,41 @@ def test_cli_extract_runs_full_profile_driven_relational_slice(tmp_path, capsys)
     assert manifest["provenance"]["runtime"]["redengine_version"] == "1.3.0-final"
     assert manifest["entities"]["PERSONA"]["blocked_variables"] == ["PERSONA.HNVUA"]
     assert validation["status"] == "pass"
+
+
+def test_cli_extract_many_parallelizes_and_resumes(tmp_path, capsys):
+    bridge = tmp_path / "bridge.py"
+    _write_bridge(bridge)
+    profile = tmp_path / "profile.json"
+    profile.write_text(json.dumps(_profile()), encoding="utf-8")
+    partitions = tmp_path / "radios.json"
+    partitions.write_text(
+        json.dumps(["061471101", "064279901", "061120902"]),
+        encoding="utf-8",
+    )
+    output = tmp_path / "many"
+    command = f'{sys.executable} "{bridge}"'
+    argv = [
+        "--bridge", command,
+        "extract-many", "demo.rxdb",
+        "--profile", str(profile),
+        "--partitions", str(partitions),
+        "--output-root", str(output),
+        "--source-hash", "fixture-source",
+        "--workers", "2",
+        "--batch-width", "1",
+    ]
+
+    assert main(argv) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["workers"] == 2
+    assert first["partition_count"] == 3
+    assert first["completed"] == 3
+    assert first["skipped"] == 0
+    assert (output / "run-manifest.json").is_file()
+    assert (output / "radio=061471101" / "checkpoint.json").is_file()
+
+    assert main(argv) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["completed"] == 0
+    assert second["skipped"] == 3
