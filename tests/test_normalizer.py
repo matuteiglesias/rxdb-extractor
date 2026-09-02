@@ -32,6 +32,29 @@ def test_source_variable_mask_can_be_preserved_without_preserving_id_mask():
     assert out == [{"xpid": 1, "p02": None, "p02__mask": 2}]
 
 
+def test_null_parent_identity_dimension_is_fatal_with_mask_diagnostics():
+    masks = {"xhid": "xhid_mask", "xvid": "xvid_mask", "h10": "h10_mask"}
+    rows = [
+        {
+            "xhid": 1,
+            "xhid_mask": 0,
+            "xvid": None,
+            "xvid_mask": 0,
+            "h10": 2,
+            "h10_mask": 0,
+            "count": 1,
+        }
+    ]
+    with pytest.raises(NormalizationError, match=r"xvid=None mask=0"):
+        normalize_frequency_rows(
+            rows,
+            id_field="xhid",
+            dimension_fields=("xvid", "h10"),
+            mask_fields=masks,
+            preserve_mask_fields=("h10",),
+        )
+
+
 def test_frequency_distribution_keeps_non_margin_missing_state_distinct():
     rows = [
         {"p02": 1, "p02_mask": 0, "count": 5},
