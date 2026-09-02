@@ -6,7 +6,7 @@ import shlex
 from . import __version__
 from .bridge import JsonSubprocessRuntime
 from .dataset import run_slice
-from .errors import CapabilityError, RxdbError
+from .errors import RxdbError
 from .manifest import semantic_hash
 from .profile import compile_profile, load_profile
 from .reports import read_validation_report
@@ -54,10 +54,6 @@ def _bridge_runtime(command: str | None) -> JsonSubprocessRuntime | None:
 def _run_extract(args, runtime: JsonSubprocessRuntime) -> int:
     capabilities = runtime.capabilities()
     capabilities.require_record_extraction()
-    # The current canonical-key contract uses @cmpcode as its source-geography anchor.
-    # A future fallback may support older engines, but must not silently invent keys.
-    if not capabilities.cmpcode:
-        raise CapabilityError("profile extraction currently requires cmpcode capability")
 
     inspection = runtime.inspect(args.database)
     profile = load_profile(args.profile)
@@ -66,13 +62,16 @@ def _run_extract(args, runtime: JsonSubprocessRuntime) -> int:
         profile,
         selection_code=args.selection_code,
         batch_width=args.batch_width,
-        use_cmpcode=True,
+        use_cmpcode=capabilities.cmpcode,
     )
     execute = normalized_plan_executor(runtime, args.database)
     provenance = {
         "runtime": capabilities.to_dict(),
         "database_metadata": dict(inspection.metadata),
         "profile_hash": semantic_hash(profile),
+        "geography_key_mode": (
+            "cmpcode" if capabilities.cmpcode else "selection-code-fallback"
+        ),
     }
     result = run_slice(
         execute=execute,
@@ -85,6 +84,7 @@ def _run_extract(args, runtime: JsonSubprocessRuntime) -> int:
         "output": str(Path(args.output)),
         "manifest": str(Path(args.output) / "dataset-manifest.json"),
         "validation": str(Path(args.output) / "validation.json"),
+        "geography_key_mode": provenance["geography_key_mode"],
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if result.validation.passed else 1
