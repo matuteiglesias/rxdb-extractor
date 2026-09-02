@@ -26,9 +26,12 @@ def build_hierarchy_projection(
     sequence IDs. For a VIVIENDA > HOGAR > PERSONA chain this can be
     ``{"VIVIENDA": "XVID", "HOGAR": "XHID", "PERSONA": "XPID"}``.
 
-    Ancestor record entities are defined in order. Each one carries forward the IDs
-    of earlier record ancestors, so the target can inherit all parent keys from its
-    nearest record parent. This mirrors the experimentally validated REDATAM hierarchy.
+    Every record ancestor receives its own ``NUMBER <scope>`` definition in the
+    prelude. The target then inherits each ancestor ID *directly from the ancestor
+    that owns it*. We deliberately do not relay an older ancestor ID through the
+    nearest record parent. The direct form is the experimentally qualified RedEngine
+    primitive and avoids missing-value propagation on older runtimes, e.g. PERSONA
+    must use ``VIVIENDA.XVID`` rather than ``HOGAR.XVID`` for its dwelling identity.
     """
     if target_entity not in schema.entities:
         raise PlanningError(f"unknown target entity: {target_entity}")
@@ -41,20 +44,13 @@ def build_hierarchy_projection(
     record_ancestors = [entity for entity in ancestors if entity.name in id_fields]
 
     prelude: list[tuple[str, str, str]] = []
-    carried: list[tuple[str, str]] = []
     for ancestor in record_ancestors:
         own_field = id_fields[ancestor.name]
         prelude.append((ancestor.name, own_field, f"NUMBER {identity_scope}"))
-        for earlier_entity, earlier_field in carried:
-            prelude.append(
-                (ancestor.name, earlier_field, f"{earlier_entity}.{earlier_field}")
-            )
-        carried.append((ancestor.name, own_field))
 
-    inheritance: list[tuple[str, str]] = []
-    if record_ancestors:
-        nearest = record_ancestors[-1].name
-        for _, field in carried:
-            inheritance.append((field, f"{nearest}.{field}"))
+    inheritance = [
+        (id_fields[ancestor.name], f"{ancestor.name}.{id_fields[ancestor.name]}")
+        for ancestor in record_ancestors
+    ]
 
     return HierarchyProjection(tuple(prelude), tuple(inheritance))
