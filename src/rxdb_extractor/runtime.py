@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Mapping, Protocol
 
 from .capabilities import CapabilitySet
+from .errors import NormalizationError
 from .normalizer import normalize_frequency_rows
 from .planner import RecordQueryPlan
 from .schema import DatabaseSchema
@@ -46,13 +47,18 @@ def normalized_plan_executor(runtime: RuntimeAdapter, database: str):
 
     def execute(plan: RecordQueryPlan) -> list[dict[str, object]]:
         result = runtime.execute_record_plan(database, plan)
-        return normalize_frequency_rows(
-            result.rows,
-            id_field=plan.own_id,
-            dimension_fields=plan.dimension_fields[1:],
-            mask_fields=result.mask_fields,
-            count_field=result.count_field,
-            preserve_mask_fields=plan.variable_fields,
-        )
+        try:
+            return normalize_frequency_rows(
+                result.rows,
+                id_field=plan.own_id,
+                dimension_fields=plan.dimension_fields[1:],
+                mask_fields=result.mask_fields,
+                count_field=result.count_field,
+                preserve_mask_fields=plan.variable_fields,
+            )
+        except NormalizationError as exc:
+            raise NormalizationError(
+                f"{plan.entity} normalization failed: {exc}; SPC={plan.spc!r}"
+            ) from exc
 
     return execute
