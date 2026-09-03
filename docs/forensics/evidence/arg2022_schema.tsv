@@ -1,0 +1,9 @@
+member	logical_entity	identifier_column	parent_identifier_column	columns	column_count	labels_member_count	hierarchy
+cpv2022.csv	CPV2022	cpv2022_ref_id		cpv2022_ref_id|cpv2022	2	0	root
+prov.csv	PROV	prov_ref_id	cpv2022_ref_id	prov_ref_id|cpv2022_ref_id|idprov|prov|nomprov|redcoden	6	3	explicit parent ref
+dpto.csv	DPTO	dpto_ref_id	prov_ref_id	dpto_ref_id|prov_ref_id|iddpto|dpto|nomdpto|redcoden	6	2	explicit parent ref
+frac.csv	FRAC	frac_ref_id	dpto_ref_id	frac_ref_id|dpto_ref_id|idfrac|frac|redcoden	5	0	explicit parent ref
+radio.csv	RADIO	radio_ref_id	frac_ref_id	radio_ref_id|frac_ref_id|idradio|radio|redcoden	5	0	explicit parent ref
+vivienda.csv	VIVIENDA	vivienda_ref_id	radio_ref_id	vivienda_ref_id|radio_ref_id|tipovivg|v01|v01_1|v02|v04|v06|codgl|codloc|codaglo|totpobv|tipo_rad|catgl|urp	15	13	explicit parent ref
+hogar.csv	HOGAR	hogar_ref_id	vivienda_ref_id	hogar_ref_id|vivienda_ref_id|nhogh|totpobh|h10|h11|inmat|h13|h14|h16|h18|h19|h20|h20cp|h22|h23|h24a|h24b|h24c|nbi_hac|nbi_viv|nbi_san|nbi_esc|nbi_sub|nbi_tot|tiphogar|eduhog|hogmig|htotmig|h15_17|h15_17_1|ipmh	32	30	explicit parent ref
+persona.csv	PERSONA	persona_ref_id	hogar_ref_id	persona_ref_id|hogar_ref_id|p01|p02|p03|edadqui|edadgru|p06|p07|p08|p09|p10|p11|p12|conasi|niv_asi|aesc|mni|p13|p14|p15|p16|p17|p18|p19|p20|p21|p22|p23|p24|p25|condact|condactd|p30|descapor|p35|p36|hnvua|edad|p33|letra|idetnica	42	40	explicit parent ref
