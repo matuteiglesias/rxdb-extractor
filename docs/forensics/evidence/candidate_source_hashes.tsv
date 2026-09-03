@@ -1,0 +1,8 @@
+kind	path	bytes	filesystem_mtime	sha256	assessment
+archive	/media/matias/Elements/CENSO_dirs/bases_censo2022_RedatamX.zip	1188760157	2025-04-30T18:12:01.911377-03:00	fc72bd93dcf4266a36bd26f23ffee6c3e5afdc3e644e6fe43ee6d433f58b2838	preserved April candidate; archive and every database member match custody evidence
+archive	/media/matias/Elements/CENSO_dirs/metadatos_censo2022_redatam.zip	5348532	2025-04-30T18:13:00.489783-03:00	94dd534e9eba3eed039d5aae3b7f820d55f7957b72ea9a5a798999b21611c473	companion metadata archive
+archive	/media/matias/Elements/CENSO_dirs/redx-portable-linux.zip	56859538	2025-04-30T18:25:03.894554-03:00	746ad9ac2576e26c4abd4141f01440526ff3e8e766f380b883144b6ede231eee	companion runtime archive
+parquet	/media/matias/Elements/CENSO_dirs/PERSONA.parquet	10582	2025-02-27T19:48:27.559389-03:00	d6c9fb0babcd36181da8db943f6e9acda36079156e1cbfa3ceb9a1efb4357de1	five-row sample; provenance unknown
+zip-member	Base_VP/cpv2022.rxdb	1423033	2025-04-22T13:03:28	abcc06e8903083bd1a19b4fde2d989e8a190976633f5a3f64a77df3015edb246	matches source-april-2025.json
+zip-member	Base_ PO_A_IG/cpv2022.rxdb	229847	2025-04-22T13:03:28	c6adab6d48adc192ffcab1f9f1799baee02154111f364f795ad1a9a9c9cbed84	matches source-april-2025.json
+zip-member	Base_VC_PSC/cpv2022_col.rxdb	81265	2025-04-22T13:03:28	d444ac25be3c4f298230adeca899933e0b4df92f38f79edaae6ffe321f8689fe	matches source-april-2025.json

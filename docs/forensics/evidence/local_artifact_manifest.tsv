@@ -1,0 +1,20 @@
+class	path	bytes	filesystem_mtime	sha256	note
+source	/media/matias/Elements/CENSO_dirs/bases_censo2022_RedatamX.zip	1188760157	2025-04-30T18:12:01.911377-03:00	fc72bd93dcf4266a36bd26f23ffee6c3e5afdc3e644e6fe43ee6d433f58b2838	full archive listed separately
+source	/media/matias/Elements/CENSO_dirs/metadatos_censo2022_redatam.zip	5348532	2025-04-30T18:13:00.489783-03:00	94dd534e9eba3eed039d5aae3b7f820d55f7957b72ea9a5a798999b21611c473	companion archive
+source	/media/matias/Elements/CENSO_dirs/redx-portable-linux.zip	56859538	2025-04-30T18:25:03.894554-03:00	746ad9ac2576e26c4abd4141f01440526ff3e8e766f380b883144b6ede231eee	companion runtime
+source	/media/matias/Elements/CENSO_dirs/PERSONA.parquet	10582	2025-02-27T19:48:27.559389-03:00	d6c9fb0babcd36181da8db943f6e9acda36079156e1cbfa3ceb9a1efb4357de1	five-row sample
+provenance	/media/matias/Elements/CENSO_work/provenance/source-april-2025.json	4374	2026-09-02T01:13:10.784663-03:00	4c9502ffc8f97dc9c40bddf6fb6c103707b16ddc9e35b65c0c8c1a9193120feb	23 database-member hashes
+provenance	/media/matias/Elements/CENSO_work/provenance/archive-zips.sha256	261	2026-09-02T01:14:50.679739-03:00	800712c7142a51f076514a2d9aab30d62dec88db3c8f2908bf18c4ff553747f2	archive hashes
+provenance	/media/matias/Elements/CENSO_work/provenance/vp-inspection.json	16842	2026-09-02T01:32:31.060250-03:00	7e60ae16cb8df2f5e8b2a09eac69cd86c0c560799a39ff6e8853126da7b4cd41	capabilities/schema inspection
+provenance	/media/matias/Elements/CENSO_work/provenance/m3-dataset-manifest.json	7452	2026-09-02T02:08:41.007039-03:00	585d1b458515efd18594846a7489844350ebf340f738ce27a47cb79143f09610	accepted 061471101 manifest copy
+provenance	/media/matias/Elements/CENSO_work/provenance/m3-validation.json	970	2026-09-02T02:08:41.171344-03:00	520f1a396e70f85cc5c73491307f3c7bbf1cbad54eb95287a60d63941ea78494	accepted validation copy
+provenance	/media/matias/Elements/CENSO_work/provenance/m3-artifacts.sha256	705	2026-09-02T02:08:40.790882-03:00	f374aa02ca78d99f73ef9ec0cc2012c4b9d2687e9248d21cebb2c88879a05418	accepted artifacts checksums
+profile	/media/matias/Elements/CENSO_work/profiles/argentina-censo2022-vp.json	2209	2026-09-02T02:06:28.826849-03:00	6ab5c0472f8fb80a010e60c545ef247a7ec2ee52d7e1dd24ea4bd5e853c22ec	profile file; manifest semantic hash differs
+log	/media/matias/Elements/CENSO_work/logs/legacy-source-manifest-check.txt	716	2026-09-02T01:16:48.748212-03:00	7696ccc0f788057e4ba88b4804c4600cb4989ea59fc8f8c968089eee9dae1b6a	all 23 members OK
+log	/media/matias/Elements/CENSO_work/logs/redengine11-generated-ids-061120902.txt	2167	2026-09-02T01:51:51.673112-03:00	8e3fadd48b515c1db9a15b65cc73da781b3862e38acc339466201cff44a9559c	generated-ID experiment
+log	/media/matias/Elements/CENSO_work/logs/rxdb-061120902.json	337	2026-09-02T02:07:04.518490-03:00	a46fd5be2e3bac5195907ef1174f49c8f6a2af29293b3c6a054381d192050d24	pass
+log	/media/matias/Elements/CENSO_work/logs/rxdb-061471101.json	337	2026-09-02T02:07:51.603503-03:00	19828a6d5bb1de7fb36e1f248d27c7a25cf5423edc4b52bd9ea2ec715dc469c6	pass
+log	/media/matias/Elements/CENSO_work/logs/rxdb-064279901.stdout.json	337	2026-09-02T02:28:30.086866-03:00	3c88a04d7229e388c9c2b8bcffd508d6fa9873bb706fd59bebc15d0d762d2813	pass
+log	/media/matias/Elements/CENSO_work/logs/rxdb-064279901.time.txt	1080	2026-09-02T02:28:30.423527-03:00	d38056e28b7786142e64e57349c6fb8db73d1f025e98355243ac216140ccdab2	150.36 s; 1.34 GB max RSS
+log	/media/matias/Elements/CENSO_work/logs/arg-cpv2022-m3-frame.json	390	2026-09-02T02:17:30.576755-03:00	aabe742d86cfbb8b36ec61d6aa9d030a5499efc26fc18c7c4f8e13112088bb92	frame pass
+target	/media/matias/Elements/CENSO_work/targets/acceptance-radio-061471101.csv	62	2026-09-02T02:23:18.995755-03:00	d97159407477c673a61b77214bf2de4a46c54204eda04c64b779c8d6da009e93	acceptance target

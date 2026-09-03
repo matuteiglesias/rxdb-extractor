@@ -1,0 +1,4 @@
+radio	vivienda_rows	hogar_rows	persona_rows	runtime	redatamx	profile_sha256	validation	output	source_rxdb_sha256
+061120902	1	1	1	RedEngine 1.1.0-final	1.1.3	13cb1cf04880b79a3693136d29f1595a1a7faebbf1fafe419088ed7a7a5d3608	pass	/media/matias/Elements/CENSO_work/rxdb/vp-radio-061120902	UNKNOWN (not recorded in slice manifest)
+061471101	73	56	137	RedEngine 1.1.0-final	1.1.3	13cb1cf04880b79a3693136d29f1595a1a7faebbf1fafe419088ed7a7a5d3608	pass	/media/matias/Elements/CENSO_work/rxdb/vp-radio-061471101	UNKNOWN (not recorded in slice manifest)
+064279901	1663	1627	6992	RedEngine 1.1.0-final	1.1.3	13cb1cf04880b79a3693136d29f1595a1a7faebbf1fafe419088ed7a7a5d3608	pass	/media/matias/Elements/CENSO_work/rxdb/vp-radio-064279901	UNKNOWN (not recorded in slice manifest)
