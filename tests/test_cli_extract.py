@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import sys
 
 from rxdb_extractor.artifacts import read_parquet_rows
@@ -147,8 +148,15 @@ def test_cli_extract_many_parallelizes_and_resumes(tmp_path, capsys):
     assert first["partition_count"] == 3
     assert first["completed"] == 3
     assert first["skipped"] == 0
-    assert (output / "run-manifest.json").is_file()
-    assert (output / "radio=061471101" / "checkpoint.json").is_file()
+    assert json.loads((output / "run-manifest.json").read_text()) == first
+    assert len(first["partitions"]) == 3
+    for partition in first["partitions"]:
+        checkpoint_path = Path(partition["checkpoint"])
+        assert checkpoint_path.parent == output / ".checkpoints"
+        checkpoint = json.loads(checkpoint_path.read_text())
+        assert checkpoint["selection_entity"] == "RADIO"
+        assert checkpoint["selection_code"] == partition["selection_code"]
+        assert checkpoint["validation_status"] == "pass"
 
     assert main(argv) == 0
     second = json.loads(capsys.readouterr().out)
